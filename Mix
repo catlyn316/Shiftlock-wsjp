@@ -364,33 +364,38 @@ local function parentUI(g)
 end
 
 parentUI(screenGui)
+
 local originalSpeed = 16
 local originalJump = 50
 local originalCamDistance = 12.5
 
--- 獲取原始數值
+-- 標記是否已經保存過原始值
+local hasOriginalValues = false
+
+-- 獲取原始數值 (只在所有功能都未啟動時才獲取)
 local function getOriginalValues()
+    -- 只有當所有功能都未啟動時才獲取原始值
+    if speedActive or jumpActive or camActive then
+        return
+    end
+    
     local character = player.Character
     if character then
         local humanoid = character:FindFirstChildOfClass("Humanoid")
         if humanoid then
-            if not speedActive then
-                originalSpeed = humanoid.WalkSpeed
-            end
-            if not jumpActive then
-                -- 優先使用 JumpHeight (新版)，如果不存在則使用 JumpPower (舊版)
-                if humanoid.UseJumpPower then
-                    originalJump = humanoid.JumpPower
-                else
-                    originalJump = humanoid.JumpHeight
-                end
+            originalSpeed = humanoid.WalkSpeed
+            
+            -- 優先使用 JumpHeight (新版)，如果不存在則使用 JumpPower (舊版)
+            if humanoid.UseJumpPower then
+                originalJump = humanoid.JumpPower
+            else
+                originalJump = humanoid.JumpHeight
             end
         end
     end
     
-    if not camActive then
-        originalCamDistance = player.CameraMaxZoomDistance
-    end
+    originalCamDistance = player.CameraMaxZoomDistance
+    hasOriginalValues = true
 end
 
 -- 創建 GUI
@@ -703,8 +708,13 @@ local speedConnection = nil
 local jumpConnection = nil
 local camConnection = nil
 
--- 獲取初始值
-getOriginalValues()
+-- 獲取初始值 (等待角色載入後再獲取)
+task.spawn(function()
+    if player.Character then
+        task.wait(0.1) -- 等待遊戲設定初始值
+        getOriginalValues()
+    end
+end)
 
 -- 更新狀態函數
 local function updateStatus()
@@ -739,8 +749,12 @@ speedButton.MouseButton1Click:Connect(function()
     if not humanoid then return end
     
     if not speedActive then
+        -- 在啟動前確保有原始值
+        if not hasOriginalValues then
+            getOriginalValues()
+        end
+        
         -- 啟動
-        getOriginalValues()
         speedValue = tonumber(speedInput.Text) or 70
         speedActive = true
         speedButton.Text = "解除"
@@ -786,8 +800,12 @@ end)
 -- 鏡頭距離控制
 camButton.MouseButton1Click:Connect(function()
     if not camActive then
+        -- 在啟動前確保有原始值
+        if not hasOriginalValues then
+            getOriginalValues()
+        end
+        
         -- 啟動
-        getOriginalValues()
         camValue = tonumber(camInput.Text) or 120
         camActive = true
         camButton.Text = "解除"
@@ -864,8 +882,12 @@ jumpButton.MouseButton1Click:Connect(function()
     if not humanoid then return end
     
     if not jumpActive then
+        -- 在啟動前確保有原始值
+        if not hasOriginalValues then
+            getOriginalValues()
+        end
+        
         -- 啟動
-        getOriginalValues()
         jumpValue = tonumber(jumpInput.Text) or 75
         jumpActive = true
         jumpButton.Text = "解除"
@@ -981,9 +1003,16 @@ end)
 player.CharacterAdded:Connect(function(character)
     local humanoid = character:WaitForChild("Humanoid")
     
+    -- 重置原始值標記,等待新角色的初始值設定完成
+    hasOriginalValues = false
+    
     -- 等待一小段時間讓遊戲設定原始值
     wait(0.1)
-    getOriginalValues()
+    
+    -- 如果所有功能都未啟動,獲取新的原始值
+    if not speedActive and not jumpActive and not camActive then
+        getOriginalValues()
+    end
     
     if speedActive then
         humanoid.WalkSpeed = speedValue
