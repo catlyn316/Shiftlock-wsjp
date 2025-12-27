@@ -15,7 +15,7 @@ if playerGui:FindFirstChild("ShiftLockUI") then playerGui.ShiftLockUI:Destroy() 
 if playerGui:FindFirstChild("SpeedJumpController") then playerGui.SpeedJumpController:Destroy() end
 
 -------------------------------------------------------------------------
--- 模組 A: ShiftLock 腳本 (獨立拖曳把手版)
+-- 模組 A: ShiftLock 腳本 (ESP 強化優化 + 獨立拖曳把手版)
 -------------------------------------------------------------------------
 local function loadShiftLock()
     local ref = cloneref or function(x) return x end
@@ -54,9 +54,8 @@ local function loadShiftLock()
     end
 
     -- 狀態管理
-    local lockMode = "none"
+    local lockMode = "none" 
     local rotCon = nil
-    local oldAR = true
     local targetPlayer = nil
     local mouseClickConn = nil
     local lastClickTime = 0
@@ -68,6 +67,7 @@ local function loadShiftLock()
     gui.IgnoreGuiInset = true
     parentUI(gui)
 
+    -- 按鈕變數
     local btn, nearBtn, clickBtn, espBtn, strk, icn
 
     local function updateButtonState(button, active)
@@ -90,19 +90,14 @@ local function loadShiftLock()
     local function clearAllModes()
         if rotCon then rotCon:Disconnect(); rotCon = nil end
         if mouseClickConn then mouseClickConn:Disconnect(); mouseClickConn = nil end
-        
         lockMouse(false)
-        
         local _, h, _ = getParts()
         if h then h.AutoRotate = true end
-        
         icn.Image = "rbxasset://textures/ui/mouseLock_off.png"
         Tw:Create(strk, TweenInfo.new(0.2), {Color = Color3.fromRGB(0, 140, 255), Thickness = 2}):Play()
         Tw:Create(btn, TweenInfo.new(0.2), {BackgroundColor3 = Color3.fromRGB(34, 34, 38)}):Play()
-        
         updateButtonState(nearBtn, false)
         updateButtonState(clickBtn, false)
-        
         lockMode = "none"
         targetPlayer = nil
         lastClickedPlayer = nil
@@ -116,7 +111,6 @@ local function loadShiftLock()
         rotCon = RS.RenderStepped:Connect(function()
             local _, _, myHRP = getParts()
             if not myHRP then return end
-            
             local lookAtPos = nil
             
             if type == "nearest" then
@@ -201,8 +195,10 @@ local function loadShiftLock()
 
     local extBtn = Instance.new("TextButton")
     extBtn.Name = "ExtendBtn"; extBtn.AnchorPoint = Vector2.new(0.5, 1); extBtn.Position = UDim2.new(0.5, 0, 0, -15)
-    extBtn.Size = UDim2.fromOffset(56, 22); extBtn.BackgroundColor3 = Color3.fromRGB(45, 45, 50); extBtn.Text = "延伸"
-    extBtn.TextSize = 12; extBtn.TextColor3 = Color3.new(1, 1, 1); extBtn.Parent = btn
+    extBtn.Size = UDim2.fromOffset(56, 22); extBtn.BackgroundColor3 = Color3.fromRGB(45, 45, 50)
+    extBtn.Text = "延伸"; extBtn.TextSize = 12
+    extBtn.TextColor3 = Color3.new(1, 1, 1)
+    extBtn.Parent = btn
     Instance.new("UICorner").Parent = extBtn
 
     local extFrame = Instance.new("Frame")
@@ -222,135 +218,73 @@ local function loadShiftLock()
     nearBtn = createExtraBtn("最近", 30)
     clickBtn = createExtraBtn("點擊", 60)
 
+    -- 延伸按鈕邏輯與字色同步
     local extended = false
     extBtn.Activated:Connect(function()
         extended = not extended
         extBtn.Text = extended and "收回" or "延伸"
+        extBtn.TextColor3 = Color3.new(1, 1, 1)
         Tw:Create(extFrame, TweenInfo.new(0.3), {Size = UDim2.fromOffset(64, extended and 90 or 0)}):Play()
     end)
 
     btn.Activated:Connect(function()
-        if lockMode == "shiftlock" then
-            clearAllModes()
-        else
-            clearAllModes()
-            lockMode = "shiftlock"
-            lockMouse(true)
-            setFaceRotation("shiftlock")
-            icn.Image = "rbxasset://textures/ui/mouseLock_on.png"
-            Tw:Create(btn, TweenInfo.new(0.2), {BackgroundColor3 = Color3.fromRGB(38, 48, 60)}):Play()
-        end
+        if lockMode == "shiftlock" then clearAllModes() else clearAllModes(); lockMode = "shiftlock"; lockMouse(true); setFaceRotation("shiftlock"); icn.Image = "rbxasset://textures/ui/mouseLock_on.png"; Tw:Create(btn, TweenInfo.new(0.2), {BackgroundColor3 = Color3.fromRGB(38, 48, 60)}):Play() end
     end)
 
     nearBtn.Activated:Connect(function()
-        if lockMode == "nearest" then
-            clearAllModes()
-        else
-            clearAllModes()
-            lockMode = "nearest"
-            updateButtonState(nearBtn, true)
-            setFaceRotation("nearest")
-        end
+        if lockMode == "nearest" then clearAllModes() else clearAllModes(); lockMode = "nearest"; updateButtonState(nearBtn, true); setFaceRotation("nearest") end
     end)
 
     clickBtn.Activated:Connect(function()
-        if lockMode == "click" then
-            clearAllModes()
+        if lockMode == "click" then clearAllModes()
         else
-            clearAllModes()
-            lockMode = "click"
-            updateButtonState(clickBtn, true)
-            
+            clearAllModes(); lockMode = "click"; updateButtonState(clickBtn, true)
             mouseClickConn = plr:GetMouse().Button1Down:Connect(function()
-                local mouse = plr:GetMouse()
-                local cam = Wk.CurrentCamera
-                
+                local mouse = plr:GetMouse(); local cam = Wk.CurrentCamera
                 local ray = cam:ScreenPointToRay(mouse.X, mouse.Y)
-                local rayOrigin = ray.Origin
-                local rayDirection = ray.Direction * 1000
-                
-                local foundPlayer = nil
-                local minDistance = math.huge
-                
+                local foundPlayer = nil; local minDistance = math.huge
                 for _, p in ipairs(Plrs:GetPlayers()) do
                     if p ~= plr and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
                         local hrp = p.Character.HumanoidRootPart
-                        local playerPos = hrp.Position
-                        
-                        local rayToPlayer = playerPos - rayOrigin
-                        local projection = rayToPlayer:Dot(rayDirection.Unit)
-                        
+                        local rayToPlayer = hrp.Position - ray.Origin
+                        local projection = rayToPlayer:Dot(ray.Direction.Unit)
                         if projection > 0 then
-                            local closestPoint = rayOrigin + rayDirection.Unit * projection
-                            local distance = (playerPos - closestPoint).Magnitude
-                            
-                            if distance < 8 and projection < minDistance then
-                                minDistance = projection
-                                foundPlayer = p
-                            end
+                            local closestPoint = ray.Origin + ray.Direction.Unit * projection
+                            local distance = (hrp.Position - closestPoint).Magnitude
+                            if distance < 8 and projection < minDistance then minDistance = projection; foundPlayer = p end
                         end
                     end
                 end
-                
-                if not foundPlayer then
-                    local target = mouse.Target
-                    if target then
-                        local char = target:FindFirstAncestorWhichIsA("Model")
-                        if char then
-                            foundPlayer = Plrs:GetPlayerFromCharacter(char)
-                        end
-                        
-                        if not foundPlayer then
-                            for player, box in pairs(espBoxes) do
-                                if box and box.Adornee and target:IsDescendantOf(box.Adornee) then
-                                    foundPlayer = player
-                                    break
-                                end
-                            end
-                        end
-                        
-                        if not foundPlayer then
-                            for _, p in ipairs(Plrs:GetPlayers()) do
-                                if p ~= plr and p.Character then
-                                    if target:IsDescendantOf(p.Character) then
-                                        foundPlayer = p
-                                        break
-                                    end
-                                end
-                            end
-                        end
-                    end
-                end
-                
                 if foundPlayer and foundPlayer ~= plr then
                     local now = tick()
-                    
-                    if lastClickedPlayer == foundPlayer and (now - lastClickTime) < 0.5 then
-                        targetPlayer = foundPlayer
-                        setFaceRotation("click", foundPlayer)
-                        print("✓ 成功鎖定:", foundPlayer.Name)
-                    end
-                    lastClickedPlayer = foundPlayer
-                    lastClickTime = now
+                    if lastClickedPlayer == foundPlayer and (now - lastClickTime) < 0.5 then targetPlayer = foundPlayer; setFaceRotation("click", foundPlayer) end
+                    lastClickedPlayer = foundPlayer; lastClickTime = now
                 end
             end)
         end
     end)
 
+    -- ESP 功能 (保持上一次的強化修復)
     local espEnabled = false
     local espLabels = {}
     local espBoxes = {}
     local espConn = nil
 
+    local function cleanupESP(p)
+        if espLabels[p] then
+            if espLabels[p].billboard then espLabels[p].billboard:Destroy() end
+            espLabels[p] = nil
+        end
+        if espBoxes[p] then
+            espBoxes[p]:Destroy()
+            espBoxes[p] = nil
+        end
+    end
+
     local function createESPBox(character)
         local box = Instance.new("BoxHandleAdornment")
-        box.Size = character:GetExtentsSize()
-        box.Color3 = Color3.fromRGB(255, 255, 255)
-        box.Transparency = 0.7
-        box.AlwaysOnTop = true
-        box.ZIndex = 1
-        box.Adornee = character
-        box.Parent = gui
+        box.Name = "ESPBox"; box.AlwaysOnTop = true; box.ZIndex = 1
+        box.Transparency = 0.7; box.Color3 = Color3.new(1, 1, 1); box.Parent = gui
         return box
     end
 
@@ -360,71 +294,38 @@ local function loadShiftLock()
         
         if not espEnabled then
             if espConn then espConn:Disconnect(); espConn = nil end
-            for _, d in pairs(espLabels) do if d.billboard then d.billboard:Destroy() end end
-            for _, box in pairs(espBoxes) do if box then box:Destroy() end end
-            espLabels = {}
-            espBoxes = {}
+            for p, _ in pairs(espLabels) do cleanupESP(p) end
+            for p, _ in pairs(espBoxes) do cleanupESP(p) end
         else
             espConn = RS.RenderStepped:Connect(function()
                 local _, _, myHRP = getParts()
-                if not myHRP then return end
-                
                 for _, p in ipairs(Plrs:GetPlayers()) do
-                    if p ~= plr and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
+                    if p ~= plr then
                         local char = p.Character
-                        local hrp = char.HumanoidRootPart
-                        local hum = char:FindFirstChildOfClass("Humanoid")
-                        
-                        if not espLabels[p] then
-                            local bg = Instance.new("BillboardGui")
-                            bg.Size = UDim2.fromOffset(200, 50)
-                            bg.AlwaysOnTop = true
-                            bg.StudsOffset = Vector3.new(0, 3, 0)
-                            bg.Adornee = hrp
-                            
-                            local tl = Instance.new("TextLabel")
-                            tl.Size = UDim2.fromScale(1, 1)
-                            tl.BackgroundTransparency = 1
-                            tl.TextColor3 = Color3.new(1, 1, 1)
-                            tl.TextStrokeTransparency = 0.5
-                            tl.TextSize = 14
-                            tl.Font = Enum.Font.SourceSansBold
-                            tl.Parent = bg
-                            
-                            bg.Parent = gui
-                            espLabels[p] = {billboard = bg, label = tl}
-                        end
-                        
-                        if not espBoxes[p] then
-                            espBoxes[p] = createESPBox(char)
-                        end
-                        
-                        if hum then
-                            local dist = (myHRP.Position - hrp.Position).Magnitude
-                            local speed = hum.WalkSpeed or 0
-                            
-                            espLabels[p].label.Text = string.format(
-                                "名: %s\n血量: %.0f\n速度: %.1f\n距離: %.1f",
-                                p.Name, hum.Health, speed, dist
-                            )
-                            
-                            espLabels[p].label.TextSize = 14
-                        end
-                        
-                        if espBoxes[p] then
-                            espBoxes[p].Size = char:GetExtentsSize()
-                        end
-                    else
-                        if espLabels[p] and espLabels[p].billboard then
-                            espLabels[p].billboard:Destroy()
-                            espLabels[p] = nil
-                        end
-                        if espBoxes[p] then
-                            espBoxes[p]:Destroy()
-                            espBoxes[p] = nil
-                        end
+                        local hrp = char and char:FindFirstChild("HumanoidRootPart")
+                        local hum = char and char:FindFirstChildOfClass("Humanoid")
+                        if char and hrp and hum and hum.Health > 0 then
+                            if not espLabels[p] then
+                                local bg = Instance.new("BillboardGui")
+                                bg.Size = UDim2.fromOffset(200, 50); bg.AlwaysOnTop = true
+                                bg.StudsOffset = Vector3.new(0, 3, 0); bg.Parent = gui
+                                local tl = Instance.new("TextLabel")
+                                tl.Size = UDim2.fromScale(1, 1); tl.BackgroundTransparency = 1
+                                tl.TextColor3 = Color3.new(1, 1, 1); tl.TextStrokeTransparency = 0.5
+                                tl.TextSize = 14; tl.Font = Enum.Font.SourceSansBold; tl.Parent = bg
+                                espLabels[p] = {billboard = bg, label = tl}
+                            end
+                            if not espBoxes[p] then espBoxes[p] = createESPBox(char) end
+                            local dist = myHRP and (myHRP.Position - hrp.Position).Magnitude or 0
+                            local realSpeed = hrp.AssemblyLinearVelocity.Magnitude 
+                            local lab = espLabels[p]
+                            lab.billboard.Adornee = hrp
+                            lab.label.Text = string.format("名: %s\n血量: %.0f\n速度: %.1f\n距離: %.1f", p.Name, hum.Health, realSpeed, dist)
+                            local box = espBoxes[p]; box.Adornee = char; box.Size = char:GetExtentsSize()
+                        else cleanupESP(p) end
                     end
                 end
+                for p, _ in pairs(espLabels) do if not Plrs:FindFirstChild(p.Name) then cleanupESP(p) end end
             end)
         end
     end)
@@ -461,23 +362,17 @@ local function loadShiftLock()
 
     xBtn.Activated:Connect(function() 
         clearAllModes()
-        if espEnabled then
-            espEnabled = false
-            if espConn then espConn:Disconnect() end
-            for _, d in pairs(espLabels) do if d.billboard then d.billboard:Destroy() end end
-            for _, box in pairs(espBoxes) do if box then box:Destroy() end end
-        end
+        if espConn then espConn:Disconnect() end
+        for p, _ in pairs(espLabels) do cleanupESP(p) end
         gui:Destroy()
     end)
     
     plr.CharacterAdded:Connect(function()
         task.wait(0.5)
-        if lockMode ~= "none" then 
-            setFaceRotation(lockMode, targetPlayer) 
-        end
+        if lockMode ~= "none" then setFaceRotation(lockMode, targetPlayer) end
     end)
 
-    print("ShiftLock 獨立拖曳把手版已載入")
+    print("ShiftLock ESP強化 + 獨立拖曳把手版已載入")
 end
 
 task.spawn(function() pcall(loadShiftLock) end)
